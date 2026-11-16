@@ -1,0 +1,171 @@
+=============================================================================
+ WINDOWS 7 SULL'ASUS VIVOBOOK X509JA - PRIMA E DOPO L'INSTALLAZIONE
+ (UefiSeven sulla partizione EFI interna, senza rompere Windows 11)
+=============================================================================
+
+PERCHE' SERVE
+Il sistema installato non parte dalla chiavetta ma dal disco interno, quindi
+SENZA UefiSeven. Windows 7 si blocca su "Avvio di Windows"/logo proprio come
+succedeva con la chiavetta. Le istruzioni ufficiali di UefiSeven dicono:
+alla fine della prima fase dell'installazione, al primo riavvio, spegni e metti
+UefiSeven davanti al boot manager sul disco PRIMA che riparta Windows 7.
+
+Nei comandi qui sotto le lettere (C:, E:, S:, W:...) sono esempi: controllale
+sempre. Dalla chiavetta di installazione le lettere sono diverse da Windows 11.
+
+-----------------------------------------------------------------------------
+ PARTE A - IN WINDOWS 11, PRIMA DI INSTALLARE (sull'ASUS)
+-----------------------------------------------------------------------------
+A1. BitLocker / Crittografia dispositivo
+    Prompt dei comandi come amministratore:
+        manage-bde -status C:
+    Se la protezione è attiva, cambiare il boot manager può far chiedere la
+    chiave di ripristino. Salva PRIMA la chiave (anche su carta):
+        manage-bde -protectors -get C:
+    (si trova anche su https://aka.ms/myrecoverykey se è legata all'account
+    Microsoft). Se non ti serve, la cosa più tranquilla è disattivarla da
+    Impostazioni > Privacy e sicurezza > Crittografia dispositivo.
+
+A2. Disattiva l'avvio rapido (ibernazione) di Windows 11:
+        powercfg /h off
+
+A3. Spazio per Windows 7: in Gestione disco riduci la partizione di Windows 11
+    e lascia lo spazio "Non allocato" (40-60 GB bastano). Non creare partizioni.
+
+A4. BACKUP DELLA PARTIZIONE EFI su una chiavetta (qui E:, controlla la lettera
+    in Esplora file). Prompt dei comandi come amministratore:
+        mountvol S: /s
+        robocopy S:\ E:\ESP_backup_W11 /E /COPY:DAT /DCOPY:T /R:0 /W:0 /XF BCD BCD.LOG* /LOG:E:\robocopy_esp.log
+        bcdedit /export E:\ESP_backup_W11\BCD_export
+        bcdedit /enum all > E:\ESP_backup_W11\bcd_W11.txt
+        certutil -hashfile S:\EFI\Microsoft\Boot\bootmgfw.efi SHA256 > E:\ESP_backup_W11\bootmgfw_W11_sha256.txt
+        dir S:\EFI\Microsoft\Boot\bootmgfw.efi >> E:\ESP_backup_W11\bootmgfw_W11_sha256.txt
+        mountvol S: /d
+    Controlla che in E:\ESP_backup_W11\EFI\Microsoft\Boot ci sia bootmgfw.efi.
+    (Il file BCD è in uso mentre Windows gira: per questo lo salviamo con
+    bcdedit /export.) Questa chiavetta è la tua assicurazione: non usarla
+    per altro finché non hai finito.
+
+-----------------------------------------------------------------------------
+ PARTE B - INSTALLAZIONE
+-----------------------------------------------------------------------------
+B1. Avvia la chiavetta (ESC all'accensione, voce "UEFI: ..."). Secure Boot off.
+B2. Installazione "Personalizzata". Seleziona SOLO lo "Spazio non allocato".
+    NON eliminare e NON formattare le altre partizioni (EFI, MSR, Windows 11,
+    Ripristino). Il setup usa la partizione EFI esistente.
+B3. Quando la prima fase finisce e compare "Windows deve essere riavviato per
+    continuare", lascia riavviare e premi subito ESC per riavviare dalla
+    CHIAVETTA (oppure spegni tenendo premuto il tasto di accensione).
+    Se è già partito dal disco e si è piantato su "Avvio di Windows", spegni:
+    non è un danno, prosegui con la parte C.
+
+-----------------------------------------------------------------------------
+ PARTE C - UEFISEVEN SULLA PARTIZIONE EFI INTERNA (dalla chiavetta)
+-----------------------------------------------------------------------------
+C1. Avvia dalla chiavetta. Alla prima schermata (lingua) premi MAIUSC+F10:
+    si apre il prompt dei comandi. Collega anche la chiavetta del backup.
+
+C2. Trova le partizioni:
+        diskpart
+        list vol
+    - partizione EFI: FAT32, 100-300 MB, tipo "System"
+    - Windows 7: NTFS, quella appena creata nello spazio libero (dir mostra
+      \Windows ma nessun tuo file in \Users) -> la chiameremo W:
+    - Windows 11: NTFS grande -> qui C:
+    - chiavetta di installazione (contiene \sources\install.wim) -> qui D:
+    - chiavetta del backup (contiene \ESP_backup_W11) -> qui E:
+        select vol <numero della partizione EFI>
+        assign letter=S
+        exit
+    Controlla con dir: dir W:\ , dir C:\ , dir E:\ESP_backup_W11
+
+C3. Backup della EFI così com'è adesso (dopo il setup):
+        xcopy S:\ E:\ESP_dopo_setup_W7\ /E /H /K /Y
+
+C4. Di chi è bootmgfw.efi? Confronta con i tre candidati:
+        fc /b S:\EFI\Microsoft\Boot\bootmgfw.efi E:\ESP_backup_W11\EFI\Microsoft\Boot\bootmgfw.efi
+        fc /b S:\EFI\Microsoft\Boot\bootmgfw.efi C:\Windows\Boot\EFI\bootmgfw.efi
+        fc /b S:\EFI\Microsoft\Boot\bootmgfw.efi W:\Windows\Boot\EFI\bootmgfw.efi
+    "FC: no differences encountered" (o "nessuna differenza") indica il
+    proprietario. Se è identico a quello del backup o di C: è il boot manager
+    di Windows 11 (il setup non l'ha toccato). Se è identico a quello di W: il
+    setup di Windows 7 l'ha sostituito.
+
+C5. Metti UefiSeven davanti. Schema consigliato:
+        bootmgfw.efi          = UefiSeven
+        bootmgfw.original.efi = boot manager di WINDOWS 11 (più recente,
+                                avvia sia Windows 11 sia Windows 7 dallo
+                                stesso menu/BCD)
+    Comandi:
+        cd /d S:\EFI\Microsoft\Boot
+        attrib -r -h -s bootmgfw.efi
+        ren bootmgfw.efi bootmgfw.original.efi
+    Solo se in C4 è risultato quello di Windows 7, rimetti quello di Windows 11:
+        copy /y E:\ESP_backup_W11\EFI\Microsoft\Boot\bootmgfw.efi bootmgfw.original.efi
+    Poi copia UefiSeven (dalla chiavetta di installazione, se lo script l'ha
+    integrato, altrimenti dalla cartella di UefiSeven 1.30):
+        copy /y D:\efi\boot\bootx64.efi S:\EFI\Microsoft\Boot\bootmgfw.efi
+        copy /y D:\efi\boot\UefiSeven.ini S:\EFI\Microsoft\Boot\UefiSeven.ini
+        dir S:\EFI\Microsoft\Boot\bootmgfw*.efi
+    UefiSeven pesa circa 95 KB (96.896 byte): controlla che bootmgfw.efi sia
+    lui e che bootmgfw.original.efi sia quello grande.
+    Facoltativo: in UefiSeven.ini metti skiperrors=1 per saltare gli avvisi
+    a ogni avvio (lascialo a 0 le prime volte, gli avvisi aiutano).
+
+C6. Diagnostica per l'avvio di Windows 7 (sempre dal prompt MAIUSC+F10).
+    Trova l'identificativo della voce di Windows 7:
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /enum osloader
+    Cerca la voce con "device partition=W:" e "description Windows 7";
+    copia il suo identificatore {xxxxxxxx-...}. Al posto di {ID} qui sotto:
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /set {ID} bootlog yes
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /set {ID} sos on
+    Per vedere la schermata blu invece del riavvio automatico (si modifica il
+    registro di Windows 7, non bcdedit):
+        reg load HKLM\W7SYS W:\Windows\System32\config\SYSTEM
+        reg add "HKLM\W7SYS\ControlSet001\Control\CrashControl" /v AutoReboot /t REG_DWORD /d 0 /f
+        reg unload HKLM\W7SYS
+    Modalità provvisoria (per capire se il problema è un driver):
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /set {ID} safeboot minimal
+    per toglierla poi:
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /deletevalue {ID} safeboot
+    Menu F8 (opzioni avanzate, compresa "Disabilita imposizione firma
+    driver") al prossimo avvio:
+        bcdedit /store S:\EFI\Microsoft\Boot\BCD /set {ID} onetimeadvancedoptions on
+
+C7. Riavvia (exit, poi chiudi il setup), dal menu scegli Windows 7: il setup
+    dovrebbe continuare la seconda fase.
+    Se si blocca ancora: spegni, torna in MAIUSC+F10 e leggi
+        type W:\Windows\ntbtlog.txt | more
+    L'ultimo driver elencato è il sospettato principale. Guarda anche
+    W:\Windows\Panther\setuperr.log e, se c'è, W:\Windows\Minidump.
+    Codici frequenti:
+      0xc0000428 = firma del driver non riconosciuta (driver SHA-256 senza
+                   KB4474419 attivo) -> prova F8 > Disabilita firma driver
+      0x0000007B = disco di avvio perso (NVMe o USB senza driver)
+      0x000000A5 = ACPI: tipico dei portatili recenti, serve un acpi.sys
+                   modificato dalla community (non incluso qui)
+
+-----------------------------------------------------------------------------
+ PARTE D - SE WINDOWS 11 NON PARTE PIU'
+-----------------------------------------------------------------------------
+D1. Prima prova: scambia di nuovo i file (dal prompt MAIUSC+F10):
+        cd /d S:\EFI\Microsoft\Boot
+        del bootmgfw.efi
+        ren bootmgfw.original.efi bootmgfw.efi
+D2. Ripristino completo della EFI dal backup:
+        xcopy E:\ESP_backup_W11\* S:\ /E /H /K /Y
+        attrib -h -s -r S:\EFI\Microsoft\Boot\BCD
+        copy /y E:\ESP_backup_W11\BCD_export S:\EFI\Microsoft\Boot\BCD
+    (questo cancella anche la voce di Windows 7 dal menu)
+D3. In alternativa, dall'ambiente di ripristino di Windows 11 (chiavetta di
+    installazione di Windows 11 > Ripristina > Prompt dei comandi):
+        bcdboot C:\Windows /s S: /f UEFI
+    (con C: = partizione di Windows 11 vista da lì). Non usare il bcdboot
+    della chiavetta di Windows 7 per ricostruire Windows 11.
+
+NOTE
+- Gli aggiornamenti di Windows 11 possono riscrivere bootmgfw.efi: se un giorno
+  Windows 7 torna a bloccarsi sul logo, rifai il passo C5.
+- Anche arrivando al desktop: grafica Intel Ice Lake senza accelerazione
+  (driver video di base), Wi-Fi AC 9461 senza driver Windows 7, touchpad
+  probabilmente non funzionante (I2C): usa mouse e chiavetta Wi-Fi USB.

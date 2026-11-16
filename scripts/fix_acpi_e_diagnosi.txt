@@ -1,0 +1,199 @@
+=============================================================================
+ WINDOWS 7 SU ASUS X509JA - BLOCCO DOPO disk.sys: DIAGNOSI E FIX ACPI
+=============================================================================
+Percorsi usati: D:\Win7Work\ISO, D:\Win7Work\Mount, chiavetta = E:
+Tutti i comandi vanno dati sul PC fisso, in un Prompt dei comandi aperto
+come amministratore. Un comando per riga, nell'ordine.
+
+-----------------------------------------------------------------------------
+ 0. COSA ABBIAMO CAPITO (leggi prima)
+-----------------------------------------------------------------------------
+- La lista di sos mostra i driver caricati dal LOADER. Dopo disk.sys parte il
+  kernel: il colpevole NON è disk.sys, è qualcosa che si inizializza dopo.
+- Sospettato n.1: ACPI. Su portatili recenti il driver acpi.sys di Windows 7
+  va in schermata blu 0x000000A5 subito dopo l'avvio del kernel. La
+  schermata blu NON si vede perché senza driver grafico non viene disegnata:
+  sembra un blocco. Lo stesso succedeva al Windows 7 installato con la ISO
+  di Internet Archive (il suo installer era quello di Windows 10, per questo
+  arrivava in fondo).
+- Correzione rispetto a prima: l'ambiente di installazione (boot.wim) viene
+  caricato tutto in RAM prima che parta il kernel. Quindi il blocco qui NON
+  dipende dalla chiavetta USB "persa". Il driver USB 3 servirà più avanti
+  (tastiera/mouse e lettura di install.wim). Gli Start=0 che hai messo
+  probabilmente non c'entrano: puoi lasciarli.
+- "nointegritychecks" è IGNORATO da Windows 7 (lo dice Microsoft). Puoi
+  toglierlo. "testsigning" non serve per gli acpi.sys qui sotto (sono già
+  firmati), ma lasciarlo non fa danni.
+- Il BIOS dell'X509JA NON ha "Launch CSM": ASUS spiega che dai processori
+  Coffee Lake in poi l'opzione è stata tolta. Quindi niente modalità legacy
+  per vedere la schermata blu.
+- bcdedit di Windows 11 accetta anche opzioni che Windows 7 non conosce:
+  quelle sconosciute vengono semplicemente ignorate da Windows 7.
+
+-----------------------------------------------------------------------------
+ 1. PROVE ECONOMICHE CON BCDEDIT (nessun file da modificare)
+-----------------------------------------------------------------------------
+Controlla la voce attuale:
+bcdedit /store E:\efi\microsoft\boot\bcd /enum {default}
+
+Togli l'opzione inutile:
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} nointegritychecks
+
+PROVA 1A - tutto insieme (così fai un solo riavvio):
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} x2apicpolicy disable
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} onecpu on
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} useplatformclock yes
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} quietboot on
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} pciexpress forcedisable
+Avvia l'ASUS dalla chiavetta.
+ - Se adesso arriva all'installazione: una di queste era la causa. Toglile
+   una alla volta (comandi "togliere" qui sotto) per capire quale serve.
+ - Se si blocca uguale: togli tutto e passa al punto 2.
+
+Cosa fanno e perché:
+ x2apicpolicy disable  usa la modalità APIC classica invece di x2APIC
+                       (gestione interrupt dei processori moderni)
+ onecpu on             usa un solo core: esclude problemi di avvio dei core
+ useplatformclock yes  usa il timer HPET invece del TSC
+ quietboot on          niente animazione grafica di avvio (meno dipendenza
+                       dall'int10 di UefiSeven)
+ pciexpress forcedisable  non prende il controllo nativo del PCIe da ACPI
+                       (_OSC): evita un percorso ACPI/PCIe problematico
+
+Per togliere tutto:
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} x2apicpolicy
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} onecpu
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} useplatformclock
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} quietboot
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} pciexpress
+
+PROVA 1B - seconda serie, poco probabile ma gratis:
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} vga on
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} xsavedisable 1
+bcdedit /store E:\efi\microsoft\boot\bcd /set {default} truncatememory 0x100000000
+ vga on            forza il driver video VGA standard
+ xsavedisable 1    disattiva XSAVE/AVX nel kernel (Ice Lake ha AVX-512,
+                   più recente di Windows 7)
+ truncatememory    usa solo i primi 4 GB di RAM
+Per togliere:
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} vga
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} xsavedisable
+bcdedit /store E:\efi\microsoft\boot\bcd /deletevalue {default} truncatememory
+
+Da NON usare: debug / bootdebug (l'ASUS non ha porta seriale/1394/USB di
+debug compatibile: rischi solo un blocco in più), nx (non c'entra).
+
+-----------------------------------------------------------------------------
+ 2. SCHERMATA BLU NASCOSTA O BLOCCO VERO? (prova del riavvio automatico)
+-----------------------------------------------------------------------------
+Se Windows va in schermata blu e il riavvio automatico è attivo, il PC si
+riavvia da solo dopo pochi secondi. Se resta fermo per sempre, è più
+probabilmente un blocco vero (oppure il crash avviene troppo presto per
+leggere questa impostazione: la prova non è garantita al 100%).
+
+dism /Get-MountedWimInfo
+dism /Mount-Image /ImageFile:D:\Win7Work\ISO\sources\boot.wim /Index:2 /MountDir:D:\Win7Work\Mount
+reg load HKLM\PE7SYS D:\Win7Work\Mount\Windows\System32\config\SYSTEM
+reg query "HKLM\PE7SYS\ControlSet001\Control\CrashControl"
+reg add "HKLM\PE7SYS\ControlSet001\Control\CrashControl" /v AutoReboot /t REG_DWORD /d 1 /f
+reg unload HKLM\PE7SYS
+dism /Unmount-Image /MountDir:D:\Win7Work\Mount /Commit
+copy /y D:\Win7Work\ISO\sources\boot.wim E:\sources\boot.wim
+
+Avvia l'ASUS e aspetta 2 minuti:
+ - si riavvia da solo  -> è una schermata blu (quasi certamente ACPI 0xA5)
+ - resta fermo         -> non conclusivo, prova comunque il punto 3
+
+(Se "reg unload" dice che la chiave è in uso, chiudi regedit e riprova.
+Se dism dà errore al commit, NON copiare il boot.wim sulla chiavetta.)
+
+-----------------------------------------------------------------------------
+ 3. FIX ACPI: SOSTITUIRE acpi.sys CON QUELLO MODIFICATO
+-----------------------------------------------------------------------------
+3.1 Scarica UNO dei due file (prima prova la A):
+
+ A) acpi.sys modificato (repository GitHub Rireki/Win7_ACPI_Patch,
+    lo stesso usato nella guida win-raid per installare Windows 7 su
+    portatili recenti):
+    https://github.com/Rireki/Win7_ACPI_Patch/raw/main/acpi.sys
+    SHA-256: fc950f04912230e5645d634e859bdade5f35e2cd4f90785c33247f25af4c3971
+
+ B) "Win7 CPU & A5 FIX ACPI.zip" di canonkong (forum win-raid), corregge
+    anche la CPU mancante in Gestione dispositivi:
+    https://winraid.level1techs.com/uploads/short-url/yQWlStlVgIisa4iBcOecwEym67S.zip
+    acpi.sys dentro lo zip, SHA-256:
+    1920d7a476df892eb87956f78e7ee64322943e514cebed6621e23b5bae33d6bb
+
+ Entrambi: versione 6.1.7601.24056, x64, con firma digitale rifatta dopo la
+ modifica (per questo non servono testsigning né F8).
+
+mkdir D:\Win7Work\ACPI
+(salva il file scaricato come D:\Win7Work\ACPI\acpi.sys)
+certutil -hashfile D:\Win7Work\ACPI\acpi.sys SHA256
+L'hash deve essere uguale a quello indicato sopra. Se Windows Defender
+cancella o mette in quarantena il file, controlla in Sicurezza di Windows >
+Protezione da virus > Cronologia protezione: questi file modificati vengono
+a volte segnalati. Decidi tu se consentirlo.
+
+3.2 boot.wim indice 2 (installazione) - È QUELLO CHE CONTA ADESSO
+dism /Get-MountedWimInfo
+dism /Mount-Image /ImageFile:D:\Win7Work\ISO\sources\boot.wim /Index:2 /MountDir:D:\Win7Work\Mount
+dir /s /b D:\Win7Work\Mount\Windows\acpi.sys
+for /f "delims=" %f in ('dir /s /b D:\Win7Work\Mount\Windows\acpi.sys') do @(takeown /f "%f" /a >nul & icacls "%f" /grant *S-1-5-32-544:F >nul & copy /y D:\Win7Work\ACPI\acpi.sys "%f")
+certutil -hashfile D:\Win7Work\Mount\Windows\System32\drivers\acpi.sys SHA256
+(deve dare lo stesso hash del file scaricato)
+dism /Unmount-Image /MountDir:D:\Win7Work\Mount /Commit
+copy /y D:\Win7Work\ISO\sources\boot.wim E:\sources\boot.wim
+
+Nota: la riga "for" va scritta così nel Prompt dei comandi (con un solo %).
+In un file .cmd andrebbe scritto %%f. Fa takeown + icacls + copia su ogni
+copia di acpi.sys trovata da "dir /s".
+
+Ora PROVA L'AVVIO dalla chiavetta. Se arriva alla schermata di
+installazione, il problema era ACPI: continua con 3.3 e 3.4.
+Se si blocca uguale con il file A, ripeti 3.2 con il file B.
+
+3.3 boot.wim indice 1 (Windows PE, usato solo per "Ripristina il
+computer"): facoltativo ma consigliato, stessi comandi con /Index:1
+dism /Mount-Image /ImageFile:D:\Win7Work\ISO\sources\boot.wim /Index:1 /MountDir:D:\Win7Work\Mount
+for /f "delims=" %f in ('dir /s /b D:\Win7Work\Mount\Windows\acpi.sys') do @(takeown /f "%f" /a >nul & icacls "%f" /grant *S-1-5-32-544:F >nul & copy /y D:\Win7Work\ACPI\acpi.sys "%f")
+dism /Unmount-Image /MountDir:D:\Win7Work\Mount /Commit
+copy /y D:\Win7Work\ISO\sources\boot.wim E:\sources\boot.wim
+
+3.4 install.wim indice 1 (Professional esportato) - INDISPENSABILE,
+altrimenti il Windows 7 installato si blocca sul logo come prima.
+Qui ci sono più copie (System32\drivers, DriverStore, winsxs): vanno
+sostituite TUTTE, altrimenti al primo riavvio del setup può tornare
+quella originale.
+dism /Mount-Image /ImageFile:D:\Win7Work\ISO\sources\install.wim /Index:1 /MountDir:D:\Win7Work\Mount
+dir /s /b D:\Win7Work\Mount\Windows\acpi.sys
+for /f "delims=" %f in ('dir /s /b D:\Win7Work\Mount\Windows\acpi.sys') do @(takeown /f "%f" /a >nul & icacls "%f" /grant *S-1-5-32-544:F >nul & copy /y D:\Win7Work\ACPI\acpi.sys "%f")
+certutil -hashfile D:\Win7Work\Mount\Windows\System32\drivers\acpi.sys SHA256
+dism /Unmount-Image /MountDir:D:\Win7Work\Mount /Commit
+copy /y D:\Win7Work\ISO\sources\install.wim E:\sources\install.wim
+
+(Non serve ricreare la ISO né riusare Rufus: basta copiare i .wim sulla
+chiavetta. install.wim deve restare sotto i 4 GB per la FAT32.)
+
+-----------------------------------------------------------------------------
+ 4. DURANTE L'INSTALLAZIONE
+-----------------------------------------------------------------------------
+- Ricorda la parte C di post_install_laptop.txt (UefiSeven sulla partizione
+  EFI interna) prima che Windows 7 parta dal disco.
+- Alla fase "Il programma di installazione sta aggiornando le impostazioni
+  del Registro di sistema" lo schermo può restare fermo o nero anche per
+  diversi minuti: NON spegnere, lavora in background.
+- Se compare l'errore 0xc0000428 (firma non valida): F8 > "Disabilita
+  imposizione firma driver". Con i due acpi.sys sopra non dovrebbe succedere.
+
+-----------------------------------------------------------------------------
+ 5. SE SI BLOCCA ANCORA DOPO IL FIX ACPI
+-----------------------------------------------------------------------------
+- Rifai le prove del punto 1 CON acpi.sys modificato: possono esserci due
+  problemi uno dopo l'altro.
+- Strada alternativa per l'installazione: usare l'installer di Windows 10
+  (come faceva la ISO di Internet Archive) con l'install.wim di Windows 7
+  già corretto (acpi.sys + NVMe). L'installer di Windows 10 parte senza
+  UefiSeven, ma il Windows 7 installato avrà comunque bisogno di acpi.sys
+  modificato e di UefiSeven sulla partizione EFI.
+- Raccontami esattamente cosa vedi (ultima riga, se si riavvia da solo o no).
