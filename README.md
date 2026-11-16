@@ -249,7 +249,7 @@ Errore o sintomo, causa individuata in questa sessione, e correzione che ha funz
 
 1. **Grafica:** niente driver iGPU Ice Lake per Windows 7. Si resta su Standard VGA, senza Aero né accelerazione. Finestre, scorrimento e video vanno a scatti. Si può alleggerire con un tema Basic, «Adjust for best performance», accelerazione grafica di Supermium disattivata e YouTube a 360p/480p. Non installare i pacchetti grafici Intel per Windows 10 (rischio Code 43).
 2. **Wi-Fi e Bluetooth interni** (Intel AC 9461): nessun driver Win7 ufficiale né modificato affidabile. Per l'indipendenza dal tethering serve una chiavetta Wi-Fi USB con driver Win7 (tipicamente Realtek o chipset «N» classici) oppure Ethernet USB. Sostituire la schedina M.2 è spesso impratico (formato CNVi / saldatura).
-3. **Touchpad:** probabilmente I2C HID / ASUS Precision Touchpad, con driver solo Win10/11. Lo stato reale su questa macchina non è stato verificato; un mouse USB resta la scelta sicura.
+3. **Touchpad:** probabilmente I2C HID / ASUS Precision Touchpad, con driver solo Win10/11. Lo stato reale su questa macchina è stato verificato e risulta non funzionante; un mouse USB resta la scelta sicura.
 4. Voci gialle SMBus `34A3` e SPI `34A4`: cosmetiche.
 5. Windows 7 è fuori supporto. Meglio non usare Windows Update in modo massiccio su questa installazione (può riscrivere file di boot o rompere firme). Restano gli `.msu` già slipstreamati.
 6. `testsigning` resta acceso. FlashBoot e `acpi.sys` sono binari Microsoft modificati da terzi: Windows Defender sul PC di preparazione può segnalarli.
