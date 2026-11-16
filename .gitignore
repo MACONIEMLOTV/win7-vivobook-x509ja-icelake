@@ -1,0 +1,14 @@
+# Do not commit Windows images or third-party / Microsoft binaries
+*.iso
+*.wim
+*.esd
+*.efi
+*.sys
+*.msu
+*.cab
+*.cat
+*.exe
+*.dll
+*.7z
+*.zip
+*.rar
