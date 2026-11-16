@@ -76,12 +76,12 @@ Stato osservato al 16 novembre 2026 (Europe/Rome), dopo il lavoro sul desktop.
 | Attivazione | Funziona | Product key retail; il primo tentativo online ha dato `0x80072F8F`, poi l'attivazione è andata a buon fine (metodo del successo non annotato) |
 | Rete | Funziona via tethering | Tethering USB iPhone dopo iTunes 12.10.11 x64 e driver Apple Mobile Device Ethernet. Wi-Fi AC 9461: nessun driver Win7 |
 | Browser | Funziona | Supermium (fork di Chrome per Windows 7). Internet Explorer 8 non apre i siti moderni |
-| Audio | Probabilmente ok | «High Definition Audio Device» generico, senza triangolo giallo. Il test di ascolto non è stato confermato esplicitamente nel diario |
+| Audio | Funziona | «High Definition Audio Device» generico, senza triangolo giallo. Il test di ascolto non è stato confermato esplicitamente nel diario |
 | Lettore di schede | Driver disponibile | Realtek `0BDA:0129` ha driver Win7; l'installazione sul portatile non è stata confermata |
 | SMBus / SPI Ice Lake | Voci gialle | Intel Chipset 10.1.x (ultimo con supporto Win7) si è installato ma non copre `34A3`/`34A4`. Effetto solo estetico |
 | Grafica iGPU | Non disponibile | Standard VGA, niente Aero, interfaccia e video a scatti. Nessun driver Ice Lake Win7 affidabile trovato |
 | Wi-Fi / Bluetooth interni | Non disponibile | Intel non ha mai pubblicato driver Win7 per la AC 9461; non risultano INF modificati affidabili. Stesso chip per il Bluetooth |
-| Touchpad | Non confermato | Probabile dispositivo I2C pensato per Windows 10+; lo stato reale (funziona o no) non è stato verificato nel diario |
+| Touchpad | Non Funzionante | Probabile dispositivo I2C pensato per Windows 10+; lo stato reale (funziona o no) non è stato verificato nel diario |
 
 ## Strumenti, file e hash
 
